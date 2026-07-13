@@ -22,6 +22,10 @@ const downloadLink = document.getElementById('downloadLink');
 const layoutSelect = document.getElementById('layout');
 const cellSizeSelect = document.getElementById('cellSize');
 const countdownEl = document.getElementById('countdown');
+const templateSelect = document.getElementById('template');
+const captionInput = document.getElementById('caption');
+const borderColorInput = document.getElementById('borderColor');
+const grayscaleCheckbox = document.getElementById('grayscale');
 
 let stream = null;
 let captures = [];
@@ -138,35 +142,183 @@ function assembleFinal(){
   const cellSize = parseInt(cellSizeSelect.value,10);
   const cols = layout.cols;
   const rows = layout.rows;
-  const w = cols * cellSize;
-  const h = rows * cellSize;
-  finalCanvas.width = w;
-  finalCanvas.height = h;
-  const ctx = finalCanvas.getContext('2d');
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0,0,w,h);
+  const cells = cols * rows;
+  const template = templateSelect ? templateSelect.value : 'strip';
+  const caption = captionInput ? captionInput.value : '';
+  const borderColor = borderColorInput ? borderColorInput.value : '#000';
+  const useGray = grayscaleCheckbox ? grayscaleCheckbox.checked : false;
 
-  // draw each captured image into grid order (row-major)
-  for(let i=0;i<cols*rows;i++){
+  // base content size (photos area)
+  const photosW = cols * cellSize;
+  const photosH = rows * cellSize;
+
+  // template-specific canvas sizing
+  let canvasW = photosW;
+  let canvasH = photosH;
+  let margin = Math.max(12, Math.round(cellSize*0.06));
+
+  if(template === 'strip' || template === 'receipt'){
+    // add margins around strip
+    canvasW = photosW + margin*2;
+    canvasH = photosH + margin*2 + 60; // footer area
+  } else if(template === 'polaroid'){
+    // polaroid: larger bottom border
+    canvasW = photosW + margin*2;
+    canvasH = photosH + margin*2 + 120;
+  } else if(template === 'postcard'){
+    // postcard: landscape style - add side margins
+    canvasW = photosW + margin*2 + 40;
+    canvasH = photosH + margin*2 + 40;
+  }
+
+  finalCanvas.width = canvasW;
+  finalCanvas.height = canvasH;
+  const ctx = finalCanvas.getContext('2d');
+
+  // background depending on template
+  if(template === 'strip'){
+    // colored border background
+    ctx.fillStyle = borderColor;
+    ctx.fillRect(0,0,canvasW,canvasH);
+    // inner white area for photos
+    const innerX = margin;
+    const innerY = margin;
+    const innerW = photosW;
+    const innerH = photosH;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(innerX, innerY, innerW, innerH);
+    // small gap between photos
+    var gap = Math.max(8, Math.round(cellSize*0.04));
+  } else if(template === 'polaroid'){
+    // white card
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0,0,canvasW,canvasH);
+    // thin frame color
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = 4;
+    ctx.strokeRect(6,6,canvasW-12,canvasH-12);
+    var innerX = margin;
+    var innerY = margin;
+    var innerW = photosW;
+    var innerH = photosH;
+    var gap = Math.max(8, Math.round(cellSize*0.04));
+  } else if(template === 'postcard'){
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0,0,canvasW,canvasH);
+    ctx.fillStyle = '#f8f4f2';
+    ctx.fillRect(0,0,canvasW,40);
+    var innerX = margin + 20;
+    var innerY = margin + 20;
+    var innerW = photosW;
+    var innerH = photosH;
+    var gap = Math.max(8, Math.round(cellSize*0.03));
+  } else { // receipt or default
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0,0,canvasW,canvasH);
+    var innerX = margin;
+    var innerY = margin;
+    var innerW = photosW;
+    var innerH = photosH;
+    var gap = Math.max(6, Math.round(cellSize*0.03));
+  }
+
+  // prepare positions for each cell inside inner area with small gaps
+  const positions = [];
+  // compute scaled cell size if we want gaps
+  const totalGapX = (cols - 1) * gap;
+  const totalGapY = (rows - 1) * gap;
+  const drawCellW = Math.floor((innerW - totalGapX) / cols);
+  const drawCellH = Math.floor((innerH - totalGapY) / rows);
+
+  for(let i=0;i<cells;i++){
     const cx = i % cols;
     const cy = Math.floor(i / cols);
-    const x = cx * cellSize;
-    const y = cy * cellSize;
-    if(i < captures.length){
-      const img = new Image();
-      img.src = captures[i];
-      // draw synchronously by waiting for load - but images are from dataURLs and usually cached
-      // Use closure to preserve i,x,y
-      ((ix,xpos,ypos,imgRef)=>{
-        imgRef.onload = ()=>{
-          ctx.drawImage(imgRef, xpos, ypos, cellSize, cellSize);
-          // After final draw, enable download
-          if(ix === Math.min(captures.length, cols*rows)-1){
-            enableDownload();
+    const x = innerX + cx * (drawCellW + gap);
+    const y = innerY + cy * (drawCellH + gap);
+    positions.push({x,y,w:drawCellW,h:drawCellH});
+  }
+
+  // draw placeholder frames for polaroid style (thin stroke)
+  if(template === 'polaroid'){
+    ctx.strokeStyle = '#eee';
+    ctx.lineWidth = 4;
+    positions.forEach(p=>{
+      ctx.strokeRect(p.x-4, p.y-4, p.w+8, p.h+8);
+    });
+  }
+
+  // draw images into positions respecting grayscale option
+  if(useGray){ ctx.filter = 'grayscale(100%)'; } else { ctx.filter = 'none'; }
+
+  let drawn = 0;
+  let toLoad = Math.min(captures.length, cells);
+  if(toLoad === 0){ enableDownload(); return; }
+
+  for(let i=0;i<toLoad;i++){
+    const pos = positions[i];
+    const img = new Image();
+    img.src = captures[i];
+    ((imgRef,posRef,idx)=>{
+      imgRef.onload = ()=>{
+        // draw image center-cropped into pos
+        // create temp canvas to crop to square maintaining aspect
+        const tmp = document.createElement('canvas');
+        tmp.width = imgRef.width; tmp.height = imgRef.height;
+        const tctx = tmp.getContext('2d');
+        tctx.drawImage(imgRef,0,0);
+        // draw directly using drawImage with cover behavior
+        const iw = imgRef.width, ih = imgRef.height;
+        let sx=0, sy=0, s=0;
+        if(iw > ih){ s = ih; sx = Math.floor((iw - ih)/2); sy = 0; } else { s = iw; sx = 0; sy = Math.floor((ih - iw)/2); }
+        try{
+          ctx.drawImage(imgRef, sx, sy, s, s, posRef.x, posRef.y, posRef.w, posRef.h);
+        }catch(e){
+          // fallback draw
+          ctx.drawImage(imgRef, posRef.x, posRef.y, posRef.w, posRef.h);
+        }
+
+        drawn++;
+        if(drawn === toLoad){
+          // draw footer/caption depending on template
+          ctx.filter = 'none';
+          if(template === 'strip'){
+            // draw caption area at bottom center
+            ctx.fillStyle = '#fff';
+            ctx.font = '18px "Helvetica Neue", Arial';
+            const text = caption || '';
+            ctx.fillText(text, margin + 8, innerY + innerH + 36);
+          } else if(template === 'polaroid'){
+            // draw large caption centered in bottom area
+            ctx.fillStyle = '#fff';
+            ctx.font = '20px "Helvetica Neue", Arial';
+            ctx.fillStyle = '#111';
+            const txt = caption || '';
+            ctx.textAlign = 'center';
+            ctx.fillText(txt, canvasW/2, innerY + innerH + 72);
+            ctx.textAlign = 'start';
+          } else if(template === 'receipt'){
+            // fake barcode
+            const bx = margin + 10;
+            const by = innerY + innerH + 12;
+            for(let b=0;b<40;b++){
+              const bw = 2 + (b%3==0?2:0);
+              ctx.fillStyle = (b%2===0)?'#000':'#222';
+              ctx.fillRect(bx + b*(bw+1), by, bw, 40);
+            }
+            ctx.fillStyle = '#111';
+            ctx.font = '14px Arial';
+            ctx.fillText(caption || '', margin, by + 60);
+          } else if(template === 'postcard'){
+            ctx.fillStyle = '#333';
+            ctx.font = '18px Arial';
+            ctx.fillText(caption || '', innerX, innerY + innerH + 28);
           }
-        };
-      })(i,x,y,img);
-    }
+
+          // enable download
+          enableDownload();
+        }
+      };
+    })(img,pos,i);
   }
 }
 
