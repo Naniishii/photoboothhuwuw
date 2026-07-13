@@ -29,6 +29,7 @@
 
       <button id="startCam">Start Camera</button>
       <button id="stopCam" disabled>Stop Camera</button>
+      <button id="switchCam">Switch Camera</button>
       <button id="capture">Capture</button>
       <button id="autoCapture">Auto Capture (3s)</button>
       <button id="reset">Reset</button>
@@ -38,6 +39,7 @@
       <div class="video-wrap">
         <video id="video" autoplay playsinline></video>
         <canvas id="hiddenCanvas" style="display:none"></canvas>
+        <div id="countdown" class="countdown" aria-hidden="true" style="display:none">3</div>
       </div>
 
       <div class="grid-wrap">

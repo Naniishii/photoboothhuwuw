@@ -12,6 +12,7 @@ const thumbsEl = document.getElementById('thumbs');
 
 const startBtn = document.getElementById('startCam');
 const stopBtn = document.getElementById('stopCam');
+const switchBtn = document.getElementById('switchCam');
 const captureBtn = document.getElementById('capture');
 const autoBtn = document.getElementById('autoCapture');
 const resetBtn = document.getElementById('reset');
@@ -20,10 +21,14 @@ const downloadLink = document.getElementById('downloadLink');
 
 const layoutSelect = document.getElementById('layout');
 const cellSizeSelect = document.getElementById('cellSize');
+const countdownEl = document.getElementById('countdown');
 
 let stream = null;
 let captures = [];
 let autoInterval = null;
+let facing = 'environment'; // 'environment' (back) or 'user' (front)
+let countdownTimer = null;
+let autoRunning = false;
 
 function parseLayout(val){
   const [cols, rows] = val.split('x').map(n=>parseInt(n,10));
@@ -33,18 +38,24 @@ function parseLayout(val){
 
 async function startCamera(){
   try{
-    // Prefer environment (rear) camera on phones
-    const constraints = { video: { facingMode: { exact: 'environment' } } };
+    // Prefer requested facing camera
     try{
+      const constraints = { video: { facingMode: { exact: facing } } };
       stream = await navigator.mediaDevices.getUserMedia(constraints);
     }catch(e){
-      // fallback to user camera if environment not available
-      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio:false });
+      try{
+        const constraints = { video: { facingMode: facing } };
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      }catch(e2){
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio:false });
+      }
     }
+
     video.srcObject = stream;
 
     startBtn.disabled = true;
     stopBtn.disabled = false;
+    updateSwitchButton();
   }catch(err){
     alert('Camera access denied or not available: ' + err.message);
     console.error(err);
@@ -57,8 +68,12 @@ function stopCamera(){
     video.srcObject = null;
     stream = null;
   }
+  if(countdownTimer){ cancelCountdown(); }
+  autoRunning = false;
   startBtn.disabled = false;
   stopBtn.disabled = true;
+  autoBtn.disabled = false;
+  captureBtn.disabled = false;
 }
 
 function captureFrame(){
@@ -163,6 +178,33 @@ function enableDownload(){
   downloadLink.style.display = 'inline-block';
 }
 
+function runCountdown(seconds, onTick, onComplete){
+  let remaining = seconds;
+  countdownEl.style.display = 'flex';
+  countdownEl.textContent = remaining;
+  onTick && onTick(remaining);
+  countdownTimer = setInterval(()=>{
+    remaining--;
+    if(remaining <= 0){
+      clearInterval(countdownTimer);
+      countdownTimer = null;
+      countdownEl.style.display = 'none';
+      onComplete && onComplete();
+    } else {
+      countdownEl.textContent = remaining;
+      onTick && onTick(remaining);
+    }
+  },1000);
+}
+
+function cancelCountdown(){
+  if(countdownTimer){
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+    countdownEl.style.display = 'none';
+  }
+}
+
 function startAutoCapture(){
   const layout = parseLayout(layoutSelect.value);
   const cells = layout.cols * layout.rows;
@@ -170,43 +212,69 @@ function startAutoCapture(){
     alert('Grid already filled. Reset to capture again.');
     return;
   }
-  let remaining = cells - captures.length;
+  autoRunning = true;
   autoBtn.disabled = true;
   captureBtn.disabled = true;
 
-  // 3s between captures
-  let count = 0;
-  autoInterval = setInterval(()=>{
+  const step = ()=>{
+    if(!autoRunning) return;
     if(captures.length >= cells){
-      clearInterval(autoInterval);
-      autoInterval = null;
-      assembleBtn.disabled = false;
+      autoRunning = false;
       autoBtn.disabled = false;
+      assembleBtn.disabled = false;
+      captureBtn.disabled = true;
       return;
     }
-    // small visual countdown could be added; here we capture
-    captureFrame();
-    count++;
-  }, 3000);
+    runCountdown(3, null, ()=>{
+      captureFrame();
+      setTimeout(()=>{ step(); }, 600);
+    });
+  };
+  step();
 }
 
 // wire up
 startBtn.addEventListener('click', startCamera);
 stopBtn.addEventListener('click', ()=>{
   stopCamera();
-  if(autoInterval){ clearInterval(autoInterval); autoInterval = null; }
+  autoRunning = false;
+  cancelCountdown();
+});
+
+switchBtn.addEventListener('click', async ()=>{
+  facing = (facing === 'environment') ? 'user' : 'environment';
+  updateSwitchButton();
+  if(stream){
+    stopCamera();
+    await startCamera();
+  }
 });
 
 captureBtn.addEventListener('click', ()=>{
-  captureFrame();
+  // manual capture with 3s countdown
+  captureBtn.disabled = true;
+  autoBtn.disabled = true;
+  runCountdown(3, null, ()=>{
+    captureFrame();
+    captureBtn.disabled = false;
+    autoBtn.disabled = false;
+  });
 });
 
 autoBtn.addEventListener('click', ()=>{
-  startAutoCapture();
+  if(autoRunning){
+    autoRunning = false; // stop
+    cancelCountdown();
+    autoBtn.disabled = false;
+    captureBtn.disabled = false;
+  }else{
+    startAutoCapture();
+  }
 });
 
 resetBtn.addEventListener('click', ()=>{
-  if(autoInterval){ clearInterval(autoInterval); autoInterval = null; }
+  autoRunning = false;
+  cancelCountdown();
   resetAll();
 });
 
@@ -219,13 +287,19 @@ window.addEventListener('pagehide', ()=>{
   stopCamera();
 });
 
+function updateSwitchButton(){
+  switchBtn.textContent = (facing === 'environment') ? 'Use Front Camera' : 'Use Back Camera';
+}
+
 // Accessibility: if browser doesn't support getUserMedia, show a helpful message
 if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
   startBtn.disabled = true;
   captureBtn.disabled = true;
   autoBtn.disabled = true;
+  switchBtn.disabled = true;
   alert('Your browser does not support camera access. Use a modern mobile browser (Chrome, Safari) to run this photobooth.');
 }
 
 // On load ensure buttons reflect state
+updateSwitchButton();
 resetAll();
