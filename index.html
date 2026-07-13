@@ -8,31 +8,39 @@
 </head>
 <body>
   <main class="container">
-    <h1>Photobooth</h1>
+    <header class="app-header">
+      <h1>Photobooth</h1>
+      <p class="subtitle">Quick photobooth — pick a layout, allow the camera, then capture.</p>
+    </header>
 
     <section class="controls">
-      <label for="layout">Layout:</label>
-      <select id="layout">
-        <option value="1x1">1 × 1</option>
-        <option value="2x2" selected>2 × 2</option>
-        <option value="3x3">3 × 3</option>
-        <option value="4x2">4 × 2</option>
-        <option value="2x4">2 × 4</option>
-      </select>
+      <div class="controls-left">
+        <label for="layout">Layout</label>
+        <select id="layout">
+          <option value="1x1">1 × 1</option>
+          <option value="2x2" selected>2 × 2</option>
+          <option value="3x3">3 × 3</option>
+          <option value="4x2">4 × 2</option>
+          <option value="2x4">2 × 4</option>
+        </select>
 
-      <label for="cellSize">Cell size:</label>
-      <select id="cellSize">
-        <option value="300">300px</option>
-        <option value="200" selected>200px</option>
-        <option value="150">150px</option>
-      </select>
+        <label for="cellSize">Cell size</label>
+        <select id="cellSize">
+          <option value="300">300px</option>
+          <option value="200" selected>200px</option>
+          <option value="150">150px</option>
+        </select>
+      </div>
 
-      <button id="startCam">Start Camera</button>
-      <button id="stopCam" disabled>Stop Camera</button>
-      <button id="switchCam">Switch Camera</button>
-      <button id="capture">Capture</button>
-      <button id="autoCapture">Auto Capture (3s)</button>
-      <button id="reset">Reset</button>
+      <div class="controls-right">
+        <button id="startCam" class="btn btn-ghost">Start</button>
+        <button id="switchCam" class="btn btn-ghost">Switch</button>
+        <button id="stopCam" class="btn btn-ghost" disabled>Stop</button>
+
+        <button id="capture" class="btn btn-primary">📸 Capture</button>
+        <button id="autoCapture" class="btn btn-outline">Auto (3s)</button>
+        <button id="reset" class="btn btn-ghost">Reset</button>
+      </div>
     </section>
 
     <section class="preview">
@@ -51,8 +59,8 @@
       <h2>Captured</h2>
       <div id="thumbs"></div>
       <div class="actions">
-        <button id="assemble" disabled>Assemble &rarr; Final Image</button>
-        <a id="downloadLink" style="display:none">Download Final Image</a>
+        <button id="assemble" class="btn btn-primary" disabled>Assemble — Final Image</button>
+        <a id="downloadLink" class="btn btn-primary" style="display:none">Download Final Image</a>
       </div>
     </section>
 
