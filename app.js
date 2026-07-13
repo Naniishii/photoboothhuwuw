@@ -137,13 +137,13 @@ function resetAll(){
   finalCanvas.width = finalCanvas.height = 0;
 }
 
-function assembleFinal(){
+function assembleFinal(overrideTemplate){
   const layout = parseLayout(layoutSelect.value);
   const cellSize = parseInt(cellSizeSelect.value,10);
   const cols = layout.cols;
   const rows = layout.rows;
   const cells = cols * rows;
-  const template = templateSelect ? templateSelect.value : 'strip';
+  const template = overrideTemplate || (templateSelect ? templateSelect.value : 'strip');
   const caption = captionInput ? captionInput.value : '';
   const borderColor = borderColorInput ? borderColorInput.value : '#000';
   const useGray = grayscaleCheckbox ? grayscaleCheckbox.checked : false;
@@ -157,7 +157,8 @@ function assembleFinal(){
   let canvasH = photosH;
   let margin = Math.max(12, Math.round(cellSize*0.06));
 
-  if(template === 'strip' || template === 'receipt'){
+  // sizing per-template
+  if(template === 'strip' || template === 'receipt' || template === 'blackStrip'){
     // add margins around strip
     canvasW = photosW + margin*2;
     canvasH = photosH + margin*2 + 60; // footer area
@@ -169,6 +170,10 @@ function assembleFinal(){
     // postcard: landscape style - add side margins
     canvasW = photosW + margin*2 + 40;
     canvasH = photosH + margin*2 + 40;
+  } else if(template === 'y2k'){
+    // y2k fun pastel: extra padding for decorative area
+    canvasW = photosW + margin*2 + 20;
+    canvasH = photosH + margin*2 + 80;
   }
 
   finalCanvas.width = canvasW;
@@ -176,9 +181,10 @@ function assembleFinal(){
   const ctx = finalCanvas.getContext('2d');
 
   // background depending on template
-  if(template === 'strip'){
-    // colored border background
-    ctx.fillStyle = borderColor;
+  if(template === 'strip' || template === 'blackStrip'){
+    // colored border background (blackStrip forces black)
+    const effectiveBorder = (template === 'blackStrip') ? '#000' : borderColor;
+    ctx.fillStyle = effectiveBorder;
     ctx.fillRect(0,0,canvasW,canvasH);
     // inner white area for photos
     const innerX = margin;
@@ -188,6 +194,21 @@ function assembleFinal(){
     ctx.fillStyle = '#fff';
     ctx.fillRect(innerX, innerY, innerW, innerH);
     // small gap between photos
+    var gap = Math.max(8, Math.round(cellSize*0.04));
+  } else if(template === 'y2k'){
+    // pastel gradient background and colorful rounded frames for photos
+    const g = ctx.createLinearGradient(0,0,canvasW,canvasH);
+    g.addColorStop(0, '#ffd4e0');
+    g.addColorStop(1, '#f9e7ff');
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,canvasW,canvasH);
+    // inner area
+    var innerX = margin + 10;
+    var innerY = margin + 10;
+    var innerW = photosW;
+    var innerH = photosH;
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    roundRect(ctx, innerX-6, innerY-6, innerW+12, innerH+12, 12, true, false);
     var gap = Math.max(8, Math.round(cellSize*0.04));
   } else if(template === 'polaroid'){
     // white card
@@ -220,6 +241,20 @@ function assembleFinal(){
     var innerW = photosW;
     var innerH = photosH;
     var gap = Math.max(6, Math.round(cellSize*0.03));
+  }
+
+  // helper for rounded rect (used above)
+  function roundRect(ctx,x,y,w,h,r,fill,stroke){
+    if(typeof r === 'undefined') r = 5;
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+    if(fill) ctx.fill();
+    if(stroke) ctx.stroke();
   }
 
   // prepare positions for each cell inside inner area with small gaps
@@ -433,6 +468,64 @@ resetBtn.addEventListener('click', ()=>{
 assembleBtn.addEventListener('click', ()=>{
   assembleFinal();
 });
+
+// Start screen / app shell wiring
+const startScreenEl = document.getElementById('startScreen');
+const startMainBtn = document.getElementById('startMain');
+const appShell = document.getElementById('appShell');
+const resultsPanel = document.getElementById('resultsPanel');
+const resultImage = document.getElementById('resultImage');
+const downloadResult = document.getElementById('downloadResult');
+
+if(startMainBtn){
+  startMainBtn.addEventListener('click', ()=>{
+    // animate out start screen and show app
+    if(startScreenEl) startScreenEl.style.display = 'none';
+    if(appShell) appShell.style.display = 'block';
+    // focus the start camera button to encourage camera activation
+    setTimeout(()=>{ startBtn && startBtn.focus(); }, 200);
+  });
+}
+
+// When download is enabled, show the results panel preview and wire template pickers
+function showResultPreview(){
+  try{
+    const data = finalCanvas.toDataURL('image/png');
+    // primary download link (old) and results download
+    if(downloadLink){ downloadLink.href = data; downloadLink.style.display = 'inline-block'; }
+    if(downloadResult){ downloadResult.href = data; }
+    if(resultImage){ resultImage.src = data; }
+    if(resultsPanel){ resultsPanel.style.display = 'block'; }
+    // scroll to results for mobile
+    setTimeout(()=>{ window.scrollTo({ top: (resultsPanel ? resultsPanel.offsetTop : 0) - 10, behavior: 'smooth' }); }, 100);
+  }catch(e){ console.error(e); }
+}
+
+// modify enableDownload to also populate results preview
+const _oldEnableDownload = enableDownload;
+function enableDownload(){
+  const data = finalCanvas.toDataURL('image/png');
+  if(downloadLink){ downloadLink.href = data; downloadLink.download = 'photobooth.png'; downloadLink.textContent = 'Download Final Image'; downloadLink.style.display = 'inline-block'; }
+  if(downloadResult){ downloadResult.href = data; downloadResult.download = 'photobooth.png'; }
+  // show preview
+  showResultPreview();
+}
+
+// wire up template thumbnails in the results area
+const templateButtons = document.querySelectorAll('.template-thumb');
+if(templateButtons && templateButtons.length){
+  templateButtons.forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const t = btn.dataset.template;
+      // re-assemble using chosen template and keep other options
+      assembleFinal(t);
+    });
+  });
+}
+
+// close results
+const closeResultsBtn = document.getElementById('closeResults');
+if(closeResultsBtn){ closeResultsBtn.addEventListener('click', ()=>{ if(resultsPanel) resultsPanel.style.display = 'none'; window.scrollTo({ top:0, behavior:'smooth' }); }); }
 
 // Prevent leaving camera on accidentally when page unloads
 window.addEventListener('pagehide', ()=>{

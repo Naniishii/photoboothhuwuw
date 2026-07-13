@@ -7,6 +7,15 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div id="startScreen" class="start-screen">
+    <div class="start-card">
+      <h1>Surprise for you</h1>
+      <p class="start-sub">A little photobooth surprise — tap Start to begin</p>
+      <button id="startMain" class="btn btn-primary start-btn">START</button>
+    </div>
+  </div>
+
+  <div id="appShell" style="display:none">
   <main class="container">
     <header class="app-header">
       <h1>Photobooth</h1>
@@ -80,10 +89,38 @@
       </div>
     </section>
 
+    <!-- Results / Output chooser -->
+    <section id="resultsPanel" class="results" style="display:none">
+      <h2>Finish & Export</h2>
+      <div class="results-grid">
+        <div class="results-preview">
+          <canvas id="resultCanvas" style="display:none"></canvas>
+          <img id="resultImage" alt="Assembled output preview" />
+        </div>
+        <div class="results-options">
+          <h3>Pick a design</h3>
+          <div id="templateList" class="template-list">
+            <button class="template-thumb" data-template="strip">Classic Strip</button>
+            <button class="template-thumb" data-template="blackStrip">Black Strip</button>
+            <button class="template-thumb" data-template="polaroid">Polaroid</button>
+            <button class="template-thumb" data-template="postcard">Postcard</button>
+            <button class="template-thumb" data-template="receipt">Receipt</button>
+            <button class="template-thumb" data-template="y2k">Y2K</button>
+          </div>
+
+          <div class="results-actions">
+            <a id="downloadResult" class="btn btn-primary" download="photobooth.png">Download</a>
+            <button id="closeResults" class="btn btn-ghost">Back</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <footer>
       <p>Tip: For best results allow camera access and use the rear camera on phones. To publish: create a GitHub repo and enable GitHub Pages for this site.</p>
     </footer>
   </main>
+  </div>
 
   <script src="app.js"></script>
 </body>
